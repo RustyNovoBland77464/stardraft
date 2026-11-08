@@ -58,8 +58,6 @@ public:
         for (HANDLE h : archives_) SFileCloseArchive(h);
     }
     size_t archives() const { return archives_.size(); }
-    // A file that is in neither (`name` as readFile gets it, after mpqName).
-    void addFile(const std::string& name, Bytes data) { extra_[lower(mpqName(name))] = std::move(data); }
 
     bool readFile(const std::string& name, Bytes& out, std::string& error) const override {
         const std::string n = mpqName(name);
@@ -1865,12 +1863,6 @@ void loadTileset(Tileset& t) {
         };
         if (!applyBytes(kRepairedPrerelease, sizeof kRepairedPrerelease)) applyBytes(kRepairedRelease, sizeof kRepairedRelease);
         applyBytes(kCreator, sizeof kCreator);
-        // Then the rows the mod team has not done yet: their NULL rects from the mod's unused groups right after each set,
-        // in the mod team's layouts (cmbw_tail_rules.inc; tools/plugins/cmbw/cmbw_tail_rules.py).
-        static const uint8_t kTail[] = {
-#include "cmbw_tail_rules.inc"
-        };
-        applyBytes(kTail, sizeof kTail);
     }
     applyTerrainFiles(t);
     forEachPieceNeighbor(t.era & 7, [&t](uint16_t a, uint16_t b, int place) {
@@ -1940,23 +1932,6 @@ int tileHeight(const Tileset& ts, uint16_t value) {
         if (f & 1) sum += ((f >> 1) & 3) + int(int8_t(f >> 8));
     const int h = (sum + (sum < 0 ? -8 : 8)) / 16;
     return std::min(h, 127);
-}
-
-bool looksLikeModMap(const fs::path& map) {
-    std::error_code ec;
-    const fs::path install = findInstall();
-    if (!install.empty()) {
-        const fs::path root = fs::weakly_canonical(install.parent_path(), ec), file = fs::weakly_canonical(map, ec);
-        const auto r = root.native(), f = file.native();
-        if (!r.empty() && f.size() > r.size() && std::equal(r.begin(), r.end(), f.begin(), [](auto a, auto b) { return std::towlower(a) == std::towlower(b); }))
-            return true;
-    }
-    Bytes raw;
-    std::string err;
-    if (!readMapFile(map, raw, err)) return false;
-    for (const Unit& u : readUnits(Chk::parse(raw)))
-        if (u.type >= 228) return true;
-    return false;
 }
 
 namespace {
@@ -2897,39 +2872,6 @@ fs::path findInstall() {
         if (const char* p = std::getenv(v))
             if (fs::path in = installIn(fs::path(p) / "Cosmonarchy"); !in.empty()) return in;
     return {};
-}
-
-int brushEdgeScore(const Tileset& ts, const TerrainStamp& b, const TerrainLayer& map, int x0, int y0) {
-    // A tile's pixel (x, y of its 32 x 32), from its megatile's minitiles (a flipped minitile: mirrored in x).
-    auto pixel = [&](uint16_t value, int px, int py) -> const Rgb* {
-        const int m = ts.megatileFor(value);
-        if (m < 0 || size_t(m) >= ts.megatiles.size()) return nullptr;
-        const uint32_t e = ts.megatiles[size_t(m)][size_t(py / 8 * 4 + px / 8)];
-        if ((e >> 1) >= ts.minitiles.size()) return nullptr;
-        return &ts.palette[ts.minitiles[e >> 1][size_t(py % 8 * 8 + ((e & 1) ? 7 - px % 8 : px % 8))]];
-    };
-    int64_t sum = 0, n = 0;
-    const int dx[4] = {-1, 1, 0, 0}, dy[4] = {0, 0, -1, 1};
-    for (int y = 0; y < b.height; ++y)
-        for (int x = 0; x < b.width; ++x) {
-            if (!b.has(x, y)) continue;
-            const uint16_t v = b.tiles[size_t(y) * b.width + x];
-            for (int d = 0; d < 4; ++d) {
-                const int bx = x + dx[d], by = y + dy[d];
-                if (bx >= 0 && by >= 0 && bx < b.width && by < b.height && b.has(bx, by)) continue;  // (its own tile)
-                const int mx = x0 + bx, my = y0 + by;
-                if (mx < 0 || my < 0 || mx >= map.width || my >= map.height) continue;
-                const uint16_t w = map.tiles[size_t(my) * map.width + mx];
-                for (int i = 0; i < 32; ++i) {  // (its edge on that side, and the neighbor's facing edge)
-                    const int ax = d == 0 ? 0 : d == 1 ? 31 : i, ay = d == 2 ? 0 : d == 3 ? 31 : i;
-                    const int cx = d == 0 ? 31 : d == 1 ? 0 : i, cy = d == 2 ? 31 : d == 3 ? 0 : i;
-                    const Rgb *p = pixel(v, ax, ay), *q = pixel(w, cx, cy);
-                    if (!p || !q) continue;
-                    sum += std::abs(int(p->r) - q->r) + std::abs(int(p->g) - q->g) + std::abs(int(p->b) - q->b), n += 3;
-                }
-            }
-        }
-    return n ? int(sum / n) : -1;
 }
 
 std::vector<std::array<uint16_t, 4>> learnPieceNeighbors(const GameData& data, const fs::path& mapsFolder) {

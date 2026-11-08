@@ -179,15 +179,15 @@ private:
         }
         result.image = stardraft::preview::render(chk, colors->second.empty() ? nullptr : &colors->second, 256);
         if (result.image.width > 256 || result.image.height > 256) {
-            Image small;
+            Image thumbnail;
             const double scale = 256.0 / std::max(result.image.width, result.image.height);
-            small.width = std::max(1, int(result.image.width * scale)), small.height = std::max(1, int(result.image.height * scale));
-            small.rgba.resize(size_t(small.width) * small.height * 4);
-            for (int y = 0; y < small.height; ++y) for (int x = 0; x < small.width; ++x) {
-                const size_t from = (size_t(y * result.image.height / small.height) * result.image.width + x * result.image.width / small.width) * 4;
-                std::copy_n(result.image.rgba.data() + from, 4, small.rgba.data() + (size_t(y) * small.width + x) * 4);
+            thumbnail.width = std::max(1, int(result.image.width * scale)), thumbnail.height = std::max(1, int(result.image.height * scale));
+            thumbnail.rgba.resize(size_t(thumbnail.width) * thumbnail.height * 4);
+            for (int y = 0; y < thumbnail.height; ++y) for (int x = 0; x < thumbnail.width; ++x) {
+                const size_t from = (size_t(y * result.image.height / thumbnail.height) * result.image.width + x * result.image.width / thumbnail.width) * 4;
+                std::copy_n(result.image.rgba.data() + from, 4, thumbnail.rgba.data() + (size_t(y) * thumbnail.width + x) * 4);
             }
-            result.image = std::move(small);
+            result.image = std::move(thumbnail);
         }
         result.details = std::to_wstring(info.width) + L" \xD7 " + std::to_wstring(info.height) + L" \xB7 " + kTilesetNames[info.era & 7];
         if (!file.empty() && !result.image.rgba.empty()) write(file, result);
@@ -242,7 +242,7 @@ private:
     std::thread worker_;
 };
 RecentPreviews& recentPreviews() { static RecentPreviews store; return store; }
-// Snapshot tests ask for a frame first (which queues visible cards), wait for its small pictures, then paint again.
+// Snapshot tests ask for a frame first (which queues visible cards), wait for its thumbnail pictures, then paint again.
 void recentPreviewsWait() { recentPreviews().wait(); runPosted(); }
 
 std::string recentPreviewsCheck() {
