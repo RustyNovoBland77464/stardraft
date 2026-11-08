@@ -512,11 +512,6 @@ struct MainView final : draw::View {
     // The menus' keys run when no view takes the key (the focused view first, then up to here). A search box takes the
     // letters and digits it types: the map's one-letter shortcuts (T, U, G, Q...) wait while it has the keyboard.
     bool key(const draw::KeyEvent& e) override {
-        // With no focused control, Down enters the recent-map shelf directly.
-        if (gStartView.visible() && !gStartView.hasFocus() && e.down && e.key == draw::Key::Down && !e.mods) {
-            gStartView.focus();
-            if (gStartView.key(e)) return true;
-        }
         if (simKey(e)) return true;  // (Esc ends a live game)
         if (simBarShown()) return shortcutRun(e);  // (a live game: the menus' keys only, not the map's)
         const int k = int(e.key);
@@ -527,6 +522,12 @@ struct MainView final : draw::View {
         // The focused Triggers pane types too: a letter or a digit opens its block picker (from the text event), so the
         // map's keys (the player 1 to 0, the tools V B A F, Q) do not run (Windows: editFocus for the pane).
         if ((typing || trigPaneFocused()) && typed && !(e.mods & (draw::kCtrl | draw::kAlt))) return false;
+        // With no focused control, Down enters the recent-map shelf directly.
+        if (gStartView.visible() && !gStartView.hasFocus() && e.down && e.key == draw::Key::Down && !e.mods) {
+            gStartView.focus();
+            if (gStartView.key(e)) return true;
+        }
+
         // Enter on the map: the selected location's or unit's properties (the Windows map's key).
         if (e.down && !e.repeat && e.key == draw::Key::Enter && !e.mods && !typing && map.shown() && mapEnterSdl()) return true;
         // Esc with the pie palette open (from the menu): it closes with no change.
